@@ -1,0 +1,11 @@
+{
+  "name": "daily-report-hub",
+  "private": true,
+  "description": "店舗の日報をGoogleフォームで集め、未提出のリマインドと週次のまとめを自動で行うGoogle Apps Script",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
