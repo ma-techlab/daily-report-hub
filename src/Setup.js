@@ -21,12 +21,18 @@ function onOpen() {
 
 function setup() {
   Object.keys(SHEETS).forEach(sheet_);
-  if (!loadStores_().length) {
-    SpreadsheetApp.getUi().alert('先に「店舗マスタ」に店舗を1つ以上登録してください（デモなら「デモ用の架空データを入れる」）。');
+  var stores = loadStores_();
+  var masterErrors = storeMasterErrors(stores);
+  if (masterErrors.length) {
+    SpreadsheetApp.getUi().alert('「店舗マスタ」を修正してください。\n\n' + masterErrors.join('\n'));
+    return;
+  }
+  if (!stores.some(function (store) { return store.active; })) {
+    SpreadsheetApp.getUi().alert('先に「店舗マスタ」に有効な店舗を1つ以上登録してください（デモなら「デモ用の架空データを入れる」）。');
     return;
   }
   var form = getOrCreateForm_();
-  refreshStoreChoices();
+  if (!refreshStoreChoices()) return;
   installTriggers_();
   SpreadsheetApp.getUi().alert(
     '初期設定が終わりました。\n\nフォームの回答用URL：\n' + form.getPublishedUrl() +
@@ -64,10 +70,21 @@ function getOrCreateForm_() {
 
 /** 店舗マスタの有効な店舗を、フォームの選択肢に反映する。 */
 function refreshStoreChoices() {
+  var stores = loadStores_();
+  var masterErrors = storeMasterErrors(stores);
+  if (masterErrors.length) {
+    SpreadsheetApp.getUi().alert('「店舗マスタ」を修正してください。\n\n' + masterErrors.join('\n'));
+    return false;
+  }
+  var names = stores.filter(function (s) { return s.active; }).map(function (s) { return s.name; });
+  if (!names.length) {
+    SpreadsheetApp.getUi().alert('「店舗マスタ」に有効な店舗がないため、フォームを更新できません。');
+    return false;
+  }
   var form = getOrCreateForm_();
-  var names = loadStores_().filter(function (s) { return s.active; }).map(function (s) { return s.name; });
   var item = form.getItems(FormApp.ItemType.LIST).filter(function (i) { return i.getTitle() === FORM_FIELDS.store; })[0];
   item.asListItem().setChoiceValues(names);
+  return true;
 }
 
 /** このプロジェクトのトリガーを作り直す。何度実行しても重複しない。 */

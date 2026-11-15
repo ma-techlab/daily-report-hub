@@ -40,6 +40,20 @@ test('定休曜日：表記ゆれを吸収し、曜日以外は無視する', ()
   assert.deepEqual(L.parseClosedWeekdays(''), []);
 });
 
+test('店舗マスタ：店舗IDと店舗名の空欄・重複を検出する', () => {
+  assert.deepEqual(L.storeMasterErrors(stores), []);
+  const errors = L.storeMasterErrors([
+    { id: 'S01', name: '本町店' },
+    { id: 'S01', name: '港店' },
+    { id: 'S03', name: '本町店' },
+    { id: '', name: '' },
+  ]);
+  assert.match(errors.join('\n'), /店舗IDが重複/);
+  assert.match(errors.join('\n'), /店舗名が重複/);
+  assert.match(errors.join('\n'), /店舗IDが空/);
+  assert.match(errors.join('\n'), /店舗名が空/);
+});
+
 test('回答の整形：正しい回答は店舗IDに置き換えて受け付ける', () => {
   const { errors, report } = L.normalizeReport(answers(), stores);
   assert.deepEqual(errors, []);
@@ -57,6 +71,18 @@ test('回答の整形：マスタにない店舗・小数・負の数・残食�
 
   const over = L.normalizeReport(answers({ [F.served]: '50', [F.leftover]: '60' }), stores);
   assert.deepEqual(over.errors, ['残食数が提供食数を上回っています']);
+});
+
+test('回答の整形：無効店舗・不明な選択肢・安全に扱えない大きな整数を弾く', () => {
+  const inactive = L.normalizeReport(answers({ [F.store]: '閉店' }), stores);
+  assert.match(inactive.errors.join('\n'), /無効な店舗/);
+
+  const choices = L.normalizeReport(answers({ [F.hygiene]: '', [F.consult]: '不明' }), stores);
+  assert.match(choices.errors.join('\n'), /衛生点検の選択内容/);
+  assert.match(choices.errors.join('\n'), /本部への相談の選択内容/);
+
+  const huge = L.normalizeReport(answers({ [F.planned]: '9007199254740992' }), stores);
+  assert.match(huge.errors.join('\n'), /予定食数は0以上の整数/);
 });
 
 test('要対応：問題がなければ理由は空', () => {
@@ -112,6 +138,20 @@ test('週次集計：提出率は定休日を除いた営業日が分母。週�
   assert.equal(s.total.submitted, 3);
   assert.equal(s.total.served, 400);
   assert.equal(s.total.leftoverRate, 40 / 400);
+});
+
+test('週次集計：定休日の日報は提出数と集計値に含めない', () => {
+  const week = { start: '2026-11-02', end: '2026-11-08' };
+  const reports = [
+    { storeId: 'S01', date: '2026-11-02', served: 100, leftover: 10, attention: false },
+    { storeId: 'S01', date: '2026-11-08', served: 999, leftover: 999, attention: true },
+  ];
+  const row = L.summarizeWeek(stores, reports, week).rows[0];
+  assert.equal(row.openDays, 6);
+  assert.equal(row.submitted, 1);
+  assert.equal(row.served, 100);
+  assert.equal(row.leftoverRate, 0.1);
+  assert.equal(row.attention, 0);
 });
 
 test('メール本文：店舗名などの値をエスケープする', () => {

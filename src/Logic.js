@@ -79,6 +79,24 @@ function parseClosedWeekdays(text) {
     .filter(function (s) { return WEEKDAYS_JA.indexOf(s) !== -1; });
 }
 
+/** 日報を別店舗にひも付けないよう、店舗IDと店舗名の必須・重複を確かめる。 */
+function storeMasterErrors(stores) {
+  var errors = [];
+  var ids = Object.create(null);
+  var names = Object.create(null);
+  (stores || []).forEach(function (store) {
+    var id = String(store.id || '').trim();
+    var name = String(store.name || '').trim();
+    if (!id) errors.push('店舗IDが空の行があります');
+    if (!name) errors.push('店舗名が空の行があります');
+    if (id && ids[id]) errors.push('店舗IDが重複しています：' + id);
+    if (name && names[name]) errors.push('店舗名が重複しています：' + name);
+    if (id) ids[id] = true;
+    if (name) names[name] = true;
+  });
+  return errors;
+}
+
 /** 同じ店舗・同じ営業日の日報を1行にまとめるためのキー。 */
 function reportKey(storeId, dateStr) {
   return storeId + '|' + dateStr;
@@ -96,18 +114,23 @@ function normalizeReport(answers, stores) {
   for (var i = 0; i < stores.length; i++) {
     if (stores[i].name === storeName) { store = stores[i]; break; }
   }
-  if (!store) errors.push('店舗マスタにない店舗です：' + storeName);
+  if (!store) {
+    errors.push('店舗マスタにない店舗です：' + storeName);
+  } else if (!store.active) {
+    errors.push('無効な店舗です：' + storeName);
+  }
 
   var date = normalizeDate(answers[FORM_FIELDS.date]);
   if (!isDateString(date)) errors.push('営業日の形式が正しくありません：' + date);
 
   function count(field) {
     var raw = String(answers[FORM_FIELDS[field]] == null ? '' : answers[FORM_FIELDS[field]]).trim();
-    if (!/^\d+$/.test(raw)) {
+    var value = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value)) {
       errors.push(FORM_FIELDS[field] + 'は0以上の整数で入力してください：' + raw);
       return null;
     }
-    return Number(raw);
+    return value;
   }
 
   var planned = count('planned');
@@ -116,6 +139,15 @@ function normalizeReport(answers, stores) {
   var staff = count('staff');
   if (served !== null && leftover !== null && leftover > served) {
     errors.push('残食数が提供食数を上回っています');
+  }
+
+  var hygiene = String(answers[FORM_FIELDS.hygiene] || '');
+  if (hygiene !== HYGIENE_OK && hygiene !== HYGIENE_NG) {
+    errors.push(FORM_FIELDS.hygiene + 'の選択内容が正しくありません：' + hygiene);
+  }
+  var consult = String(answers[FORM_FIELDS.consult] || '');
+  if (consult !== CONSULT_YES && consult !== CONSULT_NO) {
+    errors.push(FORM_FIELDS.consult + 'の選択内容が正しくありません：' + consult);
   }
 
   return {
@@ -128,8 +160,8 @@ function normalizeReport(answers, stores) {
       served: served,
       leftover: leftover,
       staff: staff,
-      hygieneOk: String(answers[FORM_FIELDS.hygiene] || '') === HYGIENE_OK,
-      consult: String(answers[FORM_FIELDS.consult] || '') === CONSULT_YES,
+      hygieneOk: hygiene === HYGIENE_OK,
+      consult: consult === CONSULT_YES,
       note: String(answers[FORM_FIELDS.note] || '').trim(),
     },
   };
@@ -181,7 +213,7 @@ function summarizeWeek(stores, reports, week) {
       if (isOpenOn(store, addDays(week.start, i))) openDays++;
     }
     var mine = reports.filter(function (r) {
-      return r.storeId === store.id && r.date >= week.start && r.date <= week.end;
+      return r.storeId === store.id && r.date >= week.start && r.date <= week.end && isOpenOn(store, r.date);
     });
     var served = 0;
     var leftover = 0;
@@ -292,6 +324,7 @@ if (typeof module !== 'undefined') {
     previousWeek: previousWeek,
     isOpenOn: isOpenOn,
     parseClosedWeekdays: parseClosedWeekdays,
+    storeMasterErrors: storeMasterErrors,
     reportKey: reportKey,
     normalizeReport: normalizeReport,
     leftoverRate: leftoverRate,
