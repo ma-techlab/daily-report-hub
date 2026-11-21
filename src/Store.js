@@ -27,18 +27,20 @@ var HEADERS = {
 /** スクリプト プロパティから設定を読む。未設定の値は安全側の既定値にする。 */
 function getConfig_() {
   var props = PropertiesService.getScriptProperties();
-  function num(key, fallback) {
-    var v = Number(props.getProperty(key));
-    return isFinite(v) && props.getProperty(key) !== null ? v : fallback;
+  function num(key, fallback, min, max, integerOnly) {
+    var raw = props.getProperty(key);
+    var v = Number(raw);
+    return raw !== null && String(raw).trim() !== '' && isFinite(v) &&
+      v >= min && v <= max && (!integerOnly || Math.floor(v) === v) ? v : fallback;
   }
   return {
     hqEmail: props.getProperty('HQ_EMAIL') || '',
     dryRun: props.getProperty('DRY_RUN') !== 'false',
-    remindHour: num('REMIND_HOUR', 15),
-    weeklyHour: num('WEEKLY_HOUR', 8),
+    remindHour: num('REMIND_HOUR', 15, 0, 23, true),
+    weeklyHour: num('WEEKLY_HOUR', 8, 0, 23, true),
     thresholds: {
-      leftoverRate: num('LEFTOVER_ALERT_RATE', 0.15),
-      shortageRate: num('SHORTAGE_ALERT_RATE', 0.1),
+      leftoverRate: num('LEFTOVER_ALERT_RATE', 0.15, 0, 1, false),
+      shortageRate: num('SHORTAGE_ALERT_RATE', 0.1, 0, 1, false),
     },
   };
 }
@@ -74,7 +76,10 @@ function rows_(key) {
 /** 店舗マスタ。 */
 function loadStores_() {
   return rows_('stores')
-    .filter(function (r) { return String(r[0]).trim() !== ''; })
+    .filter(function (r) {
+      return String(r[0]).trim() !== '' || String(r[1]).trim() !== '' || String(r[2]).trim() !== '' ||
+        String(r[3]).trim() !== '' || r[4] === true;
+    })
     .map(function (r) {
       return {
         id: String(r[0]).trim(),
